@@ -14,6 +14,7 @@ import uvicorn
 from fastmcp import FastMCP
 
 from .config import Settings, get_settings
+from .instructions import server_instructions
 from .tools import appointments, documentation
 
 
@@ -22,7 +23,23 @@ def build_server() -> FastMCP:
     mcp = FastMCP("Comune di Codroipo")
     documentation.register(mcp)
     appointments.register(mcp)
+    _refresh_instructions_per_connection(mcp)
     return mcp
+
+
+def _refresh_instructions_per_connection(mcp: FastMCP) -> None:
+    """Rebuild the server instructions with the current date on every new client
+    connection. FastMCP reads `instructions` once per connection while building
+    the initialize response, so wrapping that step keeps the date the connecting
+    agent receives current (rather than frozen at server start)."""
+    low_level = mcp._mcp_server
+    build_options = low_level.create_initialization_options
+
+    def build_with_current_date(*args, **kwargs):
+        low_level.instructions = server_instructions()
+        return build_options(*args, **kwargs)
+
+    low_level.create_initialization_options = build_with_current_date
 
 
 class BearerAuthMiddleware:
