@@ -1,0 +1,26 @@
+# Embedding service image. Carries CPU torch + sentence-transformers and serves
+# Qwen3-Embedding-0.6B over a tiny FastAPI endpoint. The model weights are not
+# baked in; they download on first boot into /models (a mounted volume), so the
+# download happens once and persists across restarts.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install CPU-only torch first (avoids pulling the large CUDA build).
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# transformers>=4.51 is required for the Qwen3 embedding architecture.
+RUN pip install --no-cache-dir \
+    "sentence-transformers>=3.0" \
+    "transformers>=4.51" \
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.30"
+
+COPY embedder ./embedder
+
+# Keep the HuggingFace cache on the mounted volume.
+ENV HF_HOME=/models
+
+EXPOSE 8000
+
+CMD ["uvicorn", "embedder.app:app", "--host", "0.0.0.0", "--port", "8000"]
