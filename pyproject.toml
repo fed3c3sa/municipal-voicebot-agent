@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "municipal-voicebot-agent"
+version = "0.1.0"
+description = "Vapi.ai voice-agent tools for the Comune di Codroipo (MCP server, hybrid retrieval, appointments)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Runtime dependencies for the MCP server and the host ingestion script.
+# The embedding model (torch + sentence-transformers) lives only in the
+# embedding service image, so it is kept out of the base dependencies.
+dependencies = [
+    "fastmcp>=2.9,<4",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "psycopg[binary,pool]>=3.2",
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+# Installed on the host when running the ingestion script and the tests.
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require a running Postgres database (skipped by default selection)",
+]
