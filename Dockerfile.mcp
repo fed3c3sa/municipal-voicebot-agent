@@ -1,0 +1,15 @@
+# MCP server image. Lean on purpose: no torch, no model. It talks to the
+# embedding service over HTTP and to Postgres over the network.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install the package and its runtime dependencies.
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir .
+
+EXPOSE 8000
+
+# Streamable HTTP server, bound to all interfaces so the container is reachable.
+CMD ["python", "-m", "municipal_mcp.server"]
