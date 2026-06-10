@@ -1,0 +1,77 @@
+# Local stack for the Codroipo municipal voicebot tools.
+#
+#   db        Postgres + pgvector, auto-applies db/init/*.sql on first boot
+#   embedder  Qwen3-Embedding-0.6B served over HTTP (model cached in ./models)
+#   mcp       FastMCP server exposing the tools at /mcp
+#   ngrok     public HTTPS tunnel to the mcp service (give the URL to Vapi)
+#
+# Published host ports:
+#   5432 -> db        8001 -> embedder        8000 -> mcp        4040 -> ngrok UI
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${PG_USER:-app}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-app}
+      POSTGRES_DB: ${PG_DB:-municipal}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    shm_size: "512mb"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-app} -d ${PG_DB:-municipal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  embedder:
+    build:
+      context: .
+      dockerfile: Dockerfile.embedder
+    environment:
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-Qwen/Qwen3-Embedding-0.6B}
+      EMBEDDING_QUERY_PROMPT_NAME: ${EMBEDDING_QUERY_PROMPT_NAME:-query}
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./models:/models
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health').status==200 else sys.exit(1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s  # first boot downloads ~1.2GB model weights
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    env_file: .env
+    environment:
+      # Force in-network hostnames regardless of what .env says (the .env file
+      # may point at localhost for the host ingestion script).
+      PG_HOST: db
+      EMBEDDING_SERVICE_URL: http://embedder:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: ["http", "mcp:8000"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"  # ngrok inspection UI; the public URL is shown here
+    depends_on:
+      - mcp
+
+volumes:
+  pgdata:
